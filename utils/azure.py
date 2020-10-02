@@ -3,7 +3,6 @@ import subprocess
 import json
 import base64
 import datetime
-import time
 
 class bcolors:
     HEADER = '\033[95m'
@@ -27,10 +26,10 @@ def get_subscriptions():
 """
 alert
 """
-def create_alert(datetime):
-    time_now = datetime.now()
+def create_alert(datetime_object):
+    time_now = datetime.datetime.now()
     # calculate time difference
-    time_difference = datetime - time_now
+    time_difference = datetime_object - time_now
     if time_difference.days < 30:
         ## red color
         alert = "\033[91m"
@@ -87,25 +86,6 @@ def get_aks_secrets_expiry(subscriptions):
             aks_clusters = json.loads(aks_clusters)
             for aks_cluster in aks_clusters:
                 aks_cluster_name = aks_cluster['name']
-
-                # print(aks_cluster)
-
-                try:
-                    ### check AKS CA expiry
-                    ca_command = "kubectl config view --raw -o jsonpath=\"{.clusters[?(@.name == \'" + aks_cluster['name'] + "\')].cluster.certificate-authority-data}\" | base64 -d | openssl x509 -text | awk \'/Not After/\'" 
-                    ca_output = subprocess.check_output(ca_command, shell=True).decode("UTF-8").split()
-
-                    ca_date = ca_output[4] + "-" + ca_output[3] + "-" + ca_output[6]
-                    ca_expiry_date_formatted = datetime.datetime.strptime(ca_date, '%d-%b-%Y').strftime('%d-%m-%Y')
-
-                    formatted = datetime.datetime.strptime(ca_expiry_date_formatted, '%d-%m-%Y')
-                    ## check if need to alert
-                    alert = create_alert(formatted)
-
-                    print(alert + "{:<30} {:<35} {:<25} {:<15}".format(subscription_name, aks_cluster_name, "Kubernetes CA", ca_expiry_date_formatted))
-
-                except:
-                    print("Couldn't load certificate")
             
 
                 ### check AKS SP secret expiry
@@ -135,10 +115,20 @@ def get_aks_secrets_expiry(subscriptions):
                         for password in serverAppId['passwordCredentials']:
                             expiry_date_serverAppId = azure_format_time(password['endDate'])
 
-                            alert_formatted = datetime.datetime.strptime(expiry_date_service_principal, '%d-%m-%Y')
+                            alert_formatted = datetime.datetime.strptime(expiry_date_serverAppId, '%d-%m-%Y')
                             alert = create_alert(alert_formatted)
 
                             print(alert + "{:<30} {:<35} {:<25} {:<15}".format(subscription_name, aks_cluster_name, "AAD Server App Secret", expiry_date_serverAppId))
+
+                    clientAppId = get_service_principal(aks_cluster['aadProfile']['clientAppId'])
+                    if clientAppId['passwordCredentials']:
+                        for password in clientAppId['passwordCredentials']:
+                            expiry_date_clientAppId = azure_format_time(password['endDate'])
+
+                            alert_formatted = datetime.datetime.strptime(expiry_date_clientAppId, '%d-%m-%Y')
+                            alert = create_alert(expiry_date_clientAppId)
+
+                            print(alert + "{:<30} {:<35} {:<25} {:<15}".format(subscription_name, aks_cluster_name, "AAD Client App Secret", expiry_date_clientAppId))
 
 
 
