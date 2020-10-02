@@ -126,14 +126,9 @@ def get_aks_secrets_expiry(subscriptions):
                             expiry_date_clientAppId = azure_format_time(password['endDate'])
 
                             alert_formatted = datetime.datetime.strptime(expiry_date_clientAppId, '%d-%m-%Y')
-                            alert = create_alert(expiry_date_clientAppId)
-
+                            alert = create_alert(alert_formatted)
                             print(alert + "{:<30} {:<35} {:<25} {:<15}".format(subscription_name, aks_cluster_name, "AAD Client App Secret", expiry_date_clientAppId))
-
-
-
-                    
-                
+      
 
 """
 Get app registration/service principal information
