@@ -69,69 +69,6 @@ def get_kubeconfigs(subscriptions):
 
 
 """
-Get information of AKS Credentials secrets
-"""
-def get_aks_secrets_expiry(subscriptions):
-    # create table
-    print("{:<30} {:<35} {:<25} {:<15}".format("Subscription", "Cluster Name", "Secret Type", "Expiry date"))
-
-
-    for subscription in subscriptions:
-        # change subscription
-        subprocess.call(["az", "account", "set", "-s", subscription['name']])
-
-        subscription_name = subscription['name']
-        # get all aks clusters of the subscription
-        aks_clusters = subprocess.check_output("az aks list", shell=True).decode("UTF-8")
-        if aks_clusters:
-            aks_clusters = json.loads(aks_clusters)
-            for aks_cluster in aks_clusters:
-                aks_cluster_name = aks_cluster['name']
-            
-
-                ### check AKS SP secret expiry
-                # check if managed service identity
-                if aks_cluster['servicePrincipalProfile']["clientId"] == "msi":
-                    print("{:<30} {:<35} {:<25} {:<15}".format(subscription_name, aks_cluster_name, "Managed Service Identity", "N/A"))
-                else:
-                    #get Service Principal information
-                    secret = get_service_principal(aks_cluster['servicePrincipalProfile']["clientId"])
-
-                    if secret['passwordCredentials']:
-                        # get Secret exipy dates
-                        for password in secret['passwordCredentials']:
-
-                            expiry_date_service_principal = azure_format_time(password['endDate'])
-                            # check if need to alert
-                            alert_formatted = datetime.datetime.strptime(expiry_date_service_principal, '%d-%m-%Y')
-                            alert = create_alert(alert_formatted)
-
-                            print(alert + "{:<30} {:<35} {:<25} {:<15}".format(subscription_name, aks_cluster_name, "Service Principal Secret", expiry_date_service_principal))
-
-                ### check aadProfile (clientAppId and serverAppID)
-                if aks_cluster['aadProfile']:
-                    ## serverAppId
-                    serverAppId = get_service_principal(aks_cluster['aadProfile']['serverAppId'])
-                    if serverAppId['passwordCredentials']:
-                        for password in serverAppId['passwordCredentials']:
-                            expiry_date_serverAppId = azure_format_time(password['endDate'])
-
-                            alert_formatted = datetime.datetime.strptime(expiry_date_serverAppId, '%d-%m-%Y')
-                            alert = create_alert(alert_formatted)
-
-                            print(alert + "{:<30} {:<35} {:<25} {:<15}".format(subscription_name, aks_cluster_name, "AAD Server App Secret", expiry_date_serverAppId))
-
-                    clientAppId = get_service_principal(aks_cluster['aadProfile']['clientAppId'])
-                    if clientAppId['passwordCredentials']:
-                        for password in clientAppId['passwordCredentials']:
-                            expiry_date_clientAppId = azure_format_time(password['endDate'])
-
-                            alert_formatted = datetime.datetime.strptime(expiry_date_clientAppId, '%d-%m-%Y')
-                            alert = create_alert(alert_formatted)
-                            print(alert + "{:<30} {:<35} {:<25} {:<15}".format(subscription_name, aks_cluster_name, "AAD Client App Secret", expiry_date_clientAppId))
-      
-
-"""
 Get app registration/service principal information
 """
 def get_service_principal(sp_id):
@@ -164,29 +101,3 @@ def add_role_assignments(subscription, resource_groups):
         scope = "/subscriptions/{}/resourceGroups/{}".format(subscription, resource_group)
         output = subprocess.check_output("az role assignment create --assignee {} --role {} --scope {}".format(assignee, role, scope), shell=True).decode("UTF-8")
         print("gave {} the role {} on resourcegroup: {}".format(assignee, role, resource_group))
-
-"""
-Reset AKS secrets
-inputs:
- - cluster_name : string of cluster "aks_cluster"
- - cluster_resourcegroup : string of cluster resourcegroup "rg_cluster"
- - cluster_subscription : string of cluster subscription "11111111-2222-3333-4444-555555555555"
- - secrets : list of secrets to renew ["servicePrincipal", "serverApp", "clientApp"]
-"""
-def reset_aks_secrets_expiry(cluster_name, cluster_resourcegroup, cluster_subscription, secrets):\
-    # set subscription
-    subprocess.call("az account set -s {}".format(cluster_subscription), shell=True)
-    # get cluster info
-    cluster = subprocess.check_output("az aks show --name {} --resource-group {} --subscription {}".format(cluster_name, cluster_resourcegroup, cluster_subscription), shell=True).decode("UTF-8")
-    cluster = json.loads(cluster)
-    #get Service Principal information
-    service_principal_id = cluster['servicePrincipalProfile']["clientId"]
-    # reset Service Principal secret
-    print("creating new secret")
-    new_secret = subprocess.check_output("az ad sp credential reset --name {} --query password -o tsv".format(service_principal_id), shell=True).decode("UTF-8")
-
-    time.sleep(5)
-
-    print("updating service principal secret for {}".format(cluster_name))
-    subprocess.call("az aks update-credentials --name {} --resource-group {} --reset-service-principal --service-principal {} --client-secret {}".format(cluster_name, cluster_resourcegroup, service_principal_id, new_secret), shell=True)
-    print("update was successfull")
