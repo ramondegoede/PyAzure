@@ -1,7 +1,8 @@
 from utils import azure, aks
 
-# check all aks secrets expiry dates
+# check all aks secrets expiry dates and EOS state
 aks.get_aks_end_of_support(azure.get_subscriptions())
+aks.get_aks_secrets_expiry(azure.get_subscriptions())
 
 
 # renew aks cluster secrets
